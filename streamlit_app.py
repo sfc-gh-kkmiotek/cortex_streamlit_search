@@ -49,36 +49,41 @@ def serialize(result):
     with st.container():
         st.subheader(result['title'])
         st.image(image_url)
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.text(f"views 👀: {result['unique_views']}")
         with col2: 
             st.text(f"app_id 🆔: {result['app_id']}")
         with col3:
             st.text(f"owner 👑: {result['owner']}")
-
-def search(query, filters=None, order_by="default"):
+        with col4: 
+            st.text(f"relevancy: {result['relevancy_score']}")
+    
+def search(query, filters=None, order_by="relevancy+views"):
     resp_popular = search_service_popular.search(
         query=query,
         filter=filters,
         columns=["app_id", "title", "unique_views", "owner"],
-        limit=20
+        limit=number_of_results
     )
 
     resp_unpopular = search_service_unpopular.search(
         query=query,
         filter=filters,
         columns=["app_id", "title", "unique_views", "owner"],
-        limit=10
+        limit=number_of_results//2
     )
     
+    relevancy = [x for x in chain.from_iterable(zip_longest(resp_popular.results, resp_unpopular.results)) if x is not None]
+    relevancy = [{**result, "relevancy_score": (len(relevancy) - i) / len(relevancy)} for i, result in enumerate(relevancy)]
+    
     if order_by == 'relevancy':
-        print(resp_popular.results)
-        return [x for x in chain.from_iterable(zip_longest(resp_popular.results, resp_unpopular.results)) if x is not None]
-    if order_by == 'default':
-        return resp_popular.results + resp_unpopular.results
+        return relevancy
+    if order_by == 'relevancy+views':
+        relevancy = [{**r, "relevancy_score": (int(r['unique_views'])) * (r['relevancy_score']) **(1/(boost_views/15 + 1))} for r in relevancy]
+        return sorted(relevancy, key=lambda x: -int(x['relevancy_score']))
     if order_by == 'unique_views':
-        return sorted(resp_popular.results + resp_unpopular.results, key=lambda x: -int(x['unique_views']))
+        return sorted(relevancy, key=lambda x: -int(x['unique_views']))
         
 def deduplicate(results):
     app_ids = set()
@@ -98,17 +103,18 @@ def batch(iterable, batch_size=3):
 st.title("Cortex based search engine")
 query = st.text_input("Search", "st.chat")
 with st.expander("Advanced options", expanded=True):
-    col1, col2, col3, col4, col_last = st.columns(5)
+    col1, col2, col3, col_last = st.columns(4)
     with col1: 
         components = st.multiselect("Streamlit components", component_options, None, format_func=lambda x: f"{x[0]}: {x[1]}")
+        minimum_views = st.slider("Minimum views", 0, 30, 3)
     with col2:
         dependencies = st.multiselect("Python dependencies", deps_options, None, format_func=lambda x: f"{x[0]}: {x[1]}")
+        boost_views = st.slider("Boost views", 0, 10, 1)
     with col3:
         owner = st.text_input("Owner", None)
-    with col4:
-        minimum_views = st.slider("Minimum views", 0, 30, 3)
+        number_of_results = st.slider("Number of results", 0, 100, 20)
     with col_last:
-        order_by = st.selectbox("Order by", ["default", "unique_views", 'relevancy'], 2)
+        order_by = st.selectbox("Order by", ["relevancy+views", 'relevancy', "unique_views", ], 0)
         
     filters = None
     and_filters = []

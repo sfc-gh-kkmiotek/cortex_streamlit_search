@@ -151,8 +151,8 @@ with st.expander("Advanced options", expanded=True):
         owner = st.text_input("Owner", None)
         number_of_results = st.slider("Number of results", 0, 100, 20)
     with col4:
-        cortex_score_weight = st.slider("Cortex score weight", 0, 10, 0)
-        cortex_header_multiplier = st.slider("Cortex header multiplier", 0, 10, 0)
+        cortex_score_weight = st.slider("Cortex score weight", 0, 10, 3)
+        cortex_header_multiplier = st.slider("Cortex header multiplier", 0, 10, 2)
         cortex_disable_reranker = st.checkbox("Disable reranker", False)
     with col_last:
         order_by = st.selectbox("Order by", ["relevancy+views", 'relevancy', "unique_views", ], 0)

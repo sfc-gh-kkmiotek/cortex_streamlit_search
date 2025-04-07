@@ -47,6 +47,8 @@ def get_service(name):
 
 search_service_name = st.secrets['search']['service']
 search_service = get_service(search_service_name)
+popular_search_service = get_service(search_service_name + "_popular")
+
 
 def serialize_batch(batch):
     for col, result in zip(st.columns(len(batch)), batch):
@@ -82,7 +84,7 @@ def query_cortex_search_service(service, query, filters, number_of_results):
                 "skipStopWords": False
             }
         }
-    if cortex_disable_reranker:
+    if not cortex_use_reranker:
         experimental["reranker"] = "none"
 
     
@@ -110,10 +112,14 @@ def query_cortex_search_service(service, query, filters, number_of_results):
 
 def search(query, filters=None, order_by="relevancy+views"):
     response = query_cortex_search_service(search_service, query, filters, number_of_results)
+    popular_response = query_cortex_search_service(popular_search_service, query, filters, number_of_results // 2)
     
-    zipped = [x for x in chain.from_iterable(zip_longest(response.results, response.results)) if x is not None]
-    relevancy = [{**result, "relevancy_score": int(result['@CONFIDENCE_SCORE']) / 3} for result in zipped]
-    
+    zipped = [x for x in chain.from_iterable(zip_longest(popular_response.results, response.results)) if x is not None]
+    if cortex_use_reranker_as_relevancy:
+        relevancy = [{**result, "relevancy_score": (len(zipped) - i) / len(zipped)} for i, result in enumerate(zipped)]
+    else:
+        relevancy = [{**result, "relevancy_score": int(result['@CONFIDENCE_SCORE']) / 3} for result in zipped]
+
     if order_by == 'relevancy':
         return relevancy
     if order_by == 'relevancy+views':
@@ -143,7 +149,7 @@ with st.expander("Advanced options", expanded=True):
     col1, col2, col3, col4, col_last = st.columns(5)
     with col1: 
         components = st.multiselect("Streamlit components", component_options, None, format_func=lambda x: f"{x[0]}: {x[1]}")
-        minimum_views = st.slider("Minimum views", 0, 30, 3)
+        minimum_views = st.slider("Minimum views", 0, 30, 0)
     with col2:
         dependencies = st.multiselect("Python dependencies", deps_options, None, format_func=lambda x: f"{x[0]}: {x[1]}")
         boost_views = st.slider("Boost views sorting", 0, 10, 1)
@@ -153,7 +159,11 @@ with st.expander("Advanced options", expanded=True):
     with col4:
         cortex_score_weight = st.slider("Cortex score weight", 0, 10, 3)
         cortex_header_multiplier = st.slider("Cortex header multiplier", 0, 10, 2)
-        cortex_disable_reranker = st.checkbox("Disable reranker", False)
+        cortex_use_reranker = st.checkbox("Cortex reranker", True)
+        cortex_use_reranker_as_relevancy = st.checkbox("Use reranker as relevancy", True)
+        
+        if cortex_use_reranker_as_relevancy:
+            cortex_use_reranker = True
     with col_last:
         order_by = st.selectbox("Order by", ["relevancy+views", 'relevancy', "unique_views", ], 0)
         
